@@ -9,7 +9,10 @@ import Animated, {
   Easing,
   useAnimatedScrollHandler,
   Extrapolate,
+  runOnJS,
 } from 'react-native-reanimated';
+
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 import { useNavigation, useRoute } from '@react-navigation/native';
 
@@ -32,6 +35,9 @@ interface Params {
 
 type QuizProps = (typeof QUIZ)[0];
 
+const CARD_INCLINATION = 10;
+const CARD_SKIP_AREA = -200;
+
 export function Quiz() {
   const { navigate } = useNavigation();
 
@@ -48,6 +54,7 @@ export function Quiz() {
 
   const shake = useSharedValue(0);
   const scrollInY = useSharedValue(0);
+  const cardPosition = useSharedValue(0);
 
   const skakeAnimatedStyle = useAnimatedStyle(() => {
     return {
@@ -92,9 +99,25 @@ export function Quiz() {
 
   const headerStyle = useAnimatedStyle(() => {
     return {
-      opacity: interpolate(scrollInY.value, [60, 100], [1, 0], Extrapolate.CLAMP)
-    }
-  })
+      opacity: interpolate(
+        scrollInY.value,
+        [60, 100],
+        [1, 0],
+        Extrapolate.CLAMP
+      ),
+    };
+  });
+
+  const dragStyle = useAnimatedStyle(() => {
+    const rotateZ = cardPosition.value / CARD_INCLINATION;
+
+    return {
+      transform: [
+        { translateX: cardPosition.value },
+        { rotateZ: `${rotateZ}deg` },
+      ],
+    };
+  });
 
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
@@ -169,6 +192,23 @@ export function Quiz() {
     );
   }
 
+  const onPan = Gesture.Pan()
+    .activateAfterLongPress(200)
+    .onUpdate((event) => {
+      const moveToLeft = event.translationX < 0;
+
+      if (moveToLeft) {
+        cardPosition.value = event.translationX;
+      }
+    })
+    .onEnd((event) => {
+      if (event.translationX < CARD_SKIP_AREA) {
+        runOnJS(handleSkipConfirm)();
+      }
+
+      cardPosition.value = withTiming(0);
+    });
+
   useEffect(() => {
     const quizSelected = QUIZ.filter((item) => item.id === id)[0];
     setQuiz(quizSelected);
@@ -210,14 +250,16 @@ export function Quiz() {
           />
         </Animated.View>
 
-        <Animated.View style={skakeAnimatedStyle}>
-          <Question
-            key={quiz.questions[currentQuestion].title}
-            question={quiz.questions[currentQuestion]}
-            alternativeSelected={alternativeSelected}
-            setAlternativeSelected={setAlternativeSelected}
-          />
-        </Animated.View>
+        <GestureDetector gesture={onPan}>
+          <Animated.View style={[skakeAnimatedStyle, dragStyle]}>
+            <Question
+              key={quiz.questions[currentQuestion].title}
+              question={quiz.questions[currentQuestion]}
+              alternativeSelected={alternativeSelected}
+              setAlternativeSelected={setAlternativeSelected}
+            />
+          </Animated.View>
+        </GestureDetector>
 
         <View style={styles.footer}>
           <OutlineButton title="Parar" onPress={handleStop} />
